@@ -64,6 +64,11 @@ app.post('/add-service', async (req, res) => {
 //   const result = await repairRequestsCollection.find({}).toArray();
 //   res.send(result);
 // });
+// // Repair Requests / Bookings (কাস্টমারের সার্ভিস রিকোয়েস্ট বা বুকিং)
+// app.get('/repair-requests', async (req, res) => {
+//   const result = await repairRequestsCollection.find({}).toArray();
+//   res.send(result);
+// });
 
 // app.post('/repair-requests', async (req, res) => {
 //   const requestData = {
