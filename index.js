@@ -1,98 +1,178 @@
 
-import express from 'express';
-import cors from 'cors';
-import { MongoClient } from 'mongodb';
-import 'dotenv/config'
-
+import express from "express";
+import cors from "cors";
+import { MongoClient, ObjectId } from "mongodb";
+import "dotenv/config";
 
 const app = express();
 const port = 5000;
 
-app.use(express.json())
-app.use(cors())
+app.use(express.json());
+app.use(cors());
 
-const client = new MongoClient(`mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.tcyjszt.mongodb.net/`);
-// bad auth 
-export async function connectToMongoDB() {
-  try {
-    await client.connect();
-    console.log("You successfully connected to MongoDB!");
-    return client;
-  } catch (err) {
-    console.dir(err);
-  }
-}
+// MongoDB Connection
+const client = new MongoClient(
+  `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.tcyjszt.mongodb.net/`
+);
 
-const connectedClient =    await connectToMongoDB();
-const database = client.db('fixmate9')
- const usersCollection = database.collection("user");
+await client.connect();
+console.log("MongoDB Connected Successfully");
+
+const database = client.db("fixmate9");
+
+const usersCollection = database.collection("user");
 const servicesCollection = database.collection("services");
-// const repairRequestsCollection = database.collection("repairRequests"); // বা bookings
-// const reviewsCollection = database.collection("reviews");
-// const paymentsCollection = database.collection("payments");
+const bookingsCollection = database.collection("bookings");
 
-
-app.get('/', (req, res) => {
-  res.send('Hello World!');
-});
-app.get('/users', async (req, res) => {
-  const cursor =  usersCollection.find({})
-  const result = await cursor.toArray()
-  res.send(result)
+// Home
+app.get("/", (req, res) => {
+  res.send("FixMate Server Running");
 });
 
+// Get Users
+app.get("/users", async (req, res) => {
+  const result = await usersCollection.find({}).toArray();
+  res.send(result);
+});
 
-app.post('/add-service', async (req, res) => {
-  const service = req.body;
-  console.log('service body', service);
-  const result = await servicesCollection.insertOne(service);
-  console.log(result,' post servies result ');
-  
+// Add Service
+app.post("/add-service", async (req, res) => {
+  const result = await servicesCollection.insertOne(req.body);
   res.status(201).send(result);
 });
 
+// Get All Services
+app.get("/services", async (req, res) => {
+  const result = await servicesCollection.find({}).toArray();
+  res.send(result);
+});
 
-// // Services (যেসব মেরামত বা সার্ভিস অফার করা হয়)
-// app.get('/services', async (req, res) => {
-//   const result = await servicesCollection.find({}).toArray();
-//   res.send(result);
-// });
+// Get Single Service By ID
+app.get("/services/:id", async (req, res) => {
+  const result = await servicesCollection.findOne({
+    _id: new ObjectId(req.params.id),
+  });
+
+  res.send(result);
+});
+
+// Create Booking
+app.post("/bookings", async (req, res) => {
+  const data = req.body;
+
+  const service = await servicesCollection.findOne({
+    _id: new ObjectId(data.serviceId),
+    approvalStatus: "approved",
+    isAvailable: true,
+  });
+
+  if (!service) {
+    return res.status(404).send({
+      message: "Service not available",
+    });
+  }
+
+  const bookingData = {
+    serviceId: service._id.toString(),
+    serviceTitle: service.title,
+    serviceImage: service.image,
+    category: service.category,
+    basePrice: service.basePrice,
+
+    technicianName: service.technicianName,
+    technicianEmail: service.technicianEmail,
+
+    customerName: data.customerName,
+    customerEmail: data.customerEmail,
+    customerPhone: data.customerPhone,
+
+    address: data.address,
+    preferredDate: data.preferredDate,
+    problemDescription: data.problemDescription,
+
+    status: "requested",
+    finalAmount: service.basePrice,
+    paymentStatus: "unpaid",
+    createdAt: new Date(),
+  };
+
+  const result = await bookingsCollection.insertOne(bookingData);
+
+  res.status(201).send({
+    success: true,
+    message: "Booking successful",
+    insertedId: result.insertedId,
+  });
+});
+
+// Get Customer Bookings
+app.get("/bookings/customer/:email", async (req, res) => {
+  const result = await bookingsCollection.find({
+    customerEmail: req.params.email,
+  }).toArray();
+
+  res.send(result);
+});
+
+// Get Technician Requests
+app.get("/bookings/technician/:email", async (req, res) => {
+  const result = await bookingsCollection.find({
+    technicianEmail: req.params.email,
+  }).toArray();
+
+  res.send(result);
+});
+
+// =====================================
+// ADMIN: Get All Services
+// =====================================
+
+app.get("/admin/services", async (req, res) => {
+    const result = await servicesCollection
+        .find({})
+        .sort({ createdAt: -1 })
+        .toArray();
+
+    res.send(result);
+});
 
 
-// // Repair Requests / Bookings (কাস্টমারের সার্ভিস রিকোয়েস্ট বা বুকিং)
-// app.get('/repair-requests', async (req, res) => {
-//   const result = await repairRequestsCollection.find({}).toArray();
-//   res.send(result);
-// });
-// // Repair Requests / Bookings (কাস্টমারের সার্ভিস রিকোয়েস্ট বা বুকিং)
-// app.get('/repair-requests', async (req, res) => {
-//   const result = await repairRequestsCollection.find({}).toArray();
-//   res.send(result);
-// });
+// =====================================
+// ADMIN: Approve or Reject Service
+// =====================================
 
-// app.post('/repair-requests', async (req, res) => {
-//   const requestData = {
-//     ...req.body,
-//     status: req.body.status || "pending", // pending, assigned, in-progress, completed, cancelled
-//     createdAt: new Date(),
-//   };
-//   const result = await repairRequestsCollection.insertOne(requestData);
-//   res.status(201).send(result);
-// });
+app.patch("/admin/services/:id/status", async (req, res) => {
+    const id = req.params.id;
+    const { approvalStatus } = req.body;
 
-// // Reviews & Payments (প্রয়োজন অনুযায়ী ব্যবহারের জন্য)
-// app.get('/reviews', async (req, res) => {
-//   const result = await reviewsCollection.find({}).toArray();
-//   res.send(result);
-// });
+    if (!["approved", "rejected"].includes(approvalStatus)) {
+        return res.status(400).send({
+            message: "Invalid approval status",
+        });
+    }
 
-// app.get('/payments', async (req, res) => {
-//   const result = await paymentsCollection.find({}).toArray();
-//   res.send(result);
-// });
+    const result = await servicesCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+            $set: {
+                approvalStatus: approvalStatus,
+            },
+        }
+    );
 
+    if (result.matchedCount === 0) {
+        return res.status(404).send({
+            message: "Service not found",
+        });
+    }
 
+    res.send({
+        success: true,
+        message: `Service ${approvalStatus} successfully`,
+    });
+});
 
+// Start Server
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
+  console.log(`FixMate Server running on port ${port}`);
 });
