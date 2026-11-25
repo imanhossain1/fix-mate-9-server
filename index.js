@@ -36,15 +36,37 @@ app.get("/", (req, res) => {
 });
 
 // Get All Approved and Available Services
+// app.get("/services", async (req, res) => {
+//   const result = await servicesCollection
+//     .find({
+//       approvalStatus: "approved",
+//       isAvailable: true,
+//     })
+//     .toArray();
+
+//   res.send(result);
+// });
+
+// Get All Approved and Available Services (with optional ?category=)
 app.get("/services", async (req, res) => {
-  const result = await servicesCollection
-    .find({
+  try {
+    const { category } = req.query;
+
+    const query = {
       approvalStatus: "approved",
       isAvailable: true,
-    })
-    .toArray();
+    };
 
-  res.send(result);
+    if (category && category !== "All") {
+      query.category = category;
+    }
+
+    const result = await servicesCollection.find(query).toArray();
+    res.send(result);
+  } catch (error) {
+    console.error("Get services error:", error);
+    res.status(500).send({ message: "Failed to fetch services" });
+  }
 });
 
 // Get Single Service By ID
